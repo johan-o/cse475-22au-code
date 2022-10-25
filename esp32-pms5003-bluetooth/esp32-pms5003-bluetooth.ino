@@ -1,8 +1,8 @@
 #include "PMS.h"
 #include <HardwareSerial.h>
 #include <Wire.h>
-//#include <Adafruit_GFX.h>
-//#include <Adafruit_SSD1306.h>
+// RX to pin 17
+// TX to pin 16
  
 PMS pms(Serial2);
 PMS::DATA data;

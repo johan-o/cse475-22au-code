@@ -1,5 +1,5 @@
 #include <SoftwareSerial.h>
-SoftwareSerial pmsSerial(2, 3);
+SoftwareSerial pmsSerial(14, 12);
  
 void setup() {
   // our debugging output
@@ -42,6 +42,7 @@ void loop() {
     Serial.print("Particles > 5.0um / 0.1L air:"); Serial.println(data.particles_50um);
     Serial.print("Particles > 10.0 um / 0.1L air:"); Serial.println(data.particles_100um);
     Serial.println("---------------------------------------");
+  } else {
   }
 }
  
