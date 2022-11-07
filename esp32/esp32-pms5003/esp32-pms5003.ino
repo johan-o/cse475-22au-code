@@ -2,8 +2,10 @@
 // TX of sensor to pin 16
 #include <HardwareSerial.h>
  
-#define SECONDS_BETWEEN_READINGS 3
+#define SECONDS_BETWEEN_READINGS 15
 #define NUM_READINGS_CACHED 10
+
+#define DELAY_FAIL 2000
 
 void setup() {
   // our debugging output
@@ -30,15 +32,17 @@ struct TimeStampedData {
 struct TimeStampedData data[NUM_READINGS_CACHED];
 
 void loop() {
+  Serial.println("Beginning data read");
   bool readSuccessful = false;
 
   while (!readSuccessful) {
     readSuccessful = readPMSrawData(&Serial2);
+    delay(DELAY_FAIL);
   }
 
+  Serial.println("Successful data read");
   printRawData();
   struct TimeStampedData thisData = calculateAirIndex();
-
   delay(SECONDS_BETWEEN_READINGS * 1000);
 }
 
@@ -48,7 +52,7 @@ struct TimeStampedData calculateAirIndex() {
   struct TimeStampedData thisData;
   thisData.t  = millis() / 1000;
   thisData.data = (rawData.particles_03um + rawData.particles_05um + rawData.particles_10um + 
-      rawData.particles_25um + rawData.particles_50um + rawData.particles_100um) / 6;
+      rawData.particles_25um + rawData.particles_50um + rawData.particles_100um);
   
   Serial.print("AVERAGED DATA: ");
   Serial.print((int) thisData.t);
@@ -84,18 +88,22 @@ void printRawData() {
 // Use Serial2 as parameter s
 // Returns true only on good data read (non-zero requirement)
 boolean readPMSrawData(Stream *s) {
+  Serial.print("Reading raw PMS data: ");
   if (! s->available()) {
+    Serial.println("Read Failure--Stream *s not available");
     return false;
   }
   
   // wait until 0x42 start byte
   if (s->peek() != 0x42) {
     s->read();
+    Serial.println("Read Failure--0x42 start byte not present");
     return false;
   }
  
   // wait until all 32 bytes available
   if (s->available() < 32) {
+    Serial.println("Read Failure--Less than 32 bytes available");
     return false;
   }
     
@@ -119,7 +127,7 @@ boolean readPMSrawData(Stream *s) {
   memcpy((void *)&rawData, (void *)buffer_u16, 30);
  
   if (sum != rawData.checksum) {
-    Serial.println("Checksum failure");
+    Serial.println("Read failure--Checksum not matched");
     return false;
   }
 
@@ -133,5 +141,6 @@ boolean readPMSrawData(Stream *s) {
         return true;
   }
 
+  Serial.println("Read failure--All zero data");
   return false;
 }
