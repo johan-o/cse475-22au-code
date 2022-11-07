@@ -33,15 +33,15 @@ struct TimeStampedData data[NUM_READINGS_CACHED];
 
 void loop() {
   Serial.println("Beginning data read");
-  bool readSuccessful = false;
+  // bool readSuccessful = false;
 
-  while (!readSuccessful) {
-    readSuccessful = readPMSrawData(&Serial2);
-    delay(DELAY_FAIL);
-  }
+  // while (!readSuccessful) {
+  //   readSuccessful = readPMSrawData(&Serial2);
+  //   delay(DELAY_FAIL);
+  // }
 
   Serial.println("Successful data read");
-  printRawData();
+  // printRawData();
   struct TimeStampedData thisData = calculateAirIndex();
   delay(SECONDS_BETWEEN_READINGS * 1000);
 }
@@ -51,8 +51,9 @@ void loop() {
 struct TimeStampedData calculateAirIndex() {
   struct TimeStampedData thisData;
   thisData.t  = millis() / 1000;
-  thisData.data = (rawData.particles_03um + rawData.particles_05um + rawData.particles_10um + 
-      rawData.particles_25um + rawData.particles_50um + rawData.particles_100um);
+  thisData.data = thisData.t;
+  // thisData.data = (rawData.particles_03um + rawData.particles_05um + rawData.particles_10um + 
+  //    rawData.particles_25um + rawData.particles_50um + rawData.particles_100um);
   
   Serial.print("AVERAGED DATA: ");
   Serial.print((int) thisData.t);
