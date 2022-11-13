@@ -1,8 +1,10 @@
 // RX of sensor to pin 17
 // TX of sensor to pin 16
 #include <HardwareSerial.h>
+
+#include <time.h>
  
-#define SECONDS_BETWEEN_READINGS 15
+#define SECONDS_BETWEEN_READINGS 5
 #define NUM_READINGS_CACHED 10
 
 #define DELAY_FAIL 2000
@@ -50,7 +52,8 @@ void loop() {
 // Returns a TimeStampedData struct with current time and averaged index
 struct TimeStampedData calculateAirIndex() {
   struct TimeStampedData thisData;
-  thisData.t  = millis() / 1000;
+  time_t seconds = time(NULL);
+  thisData.t  = seconds;
   thisData.data = thisData.t;
   // thisData.data = (rawData.particles_03um + rawData.particles_05um + rawData.particles_10um + 
   //    rawData.particles_25um + rawData.particles_50um + rawData.particles_100um);

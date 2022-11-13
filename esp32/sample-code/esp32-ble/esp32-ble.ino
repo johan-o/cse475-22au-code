@@ -18,19 +18,23 @@
 #define DATA_SERVICE_UUID    "b14c20da-e0a3-47b2-803b-abcbc24b060b"
 #define DATA_UUID            "6cd4d98b-297c-43e8-b54d-048ba50d7265"
 
+BLEServer* rtcServer;
+BLEService* rtcService;
+BLECharacteristic *rtcServerCharacteristic;
+
 void setup() {
     Serial.begin(115200);
 
     BLEDevice::init("ESP32 BLE RTC");
-    BLEServer *rtcServer = BLEDevice::createServer();
-    BLEService *rtcService = rtcServer->createService(RTC_SERVICE_UUID);
-    BLECharacteristic *rtcServerCharacteristic = rtcService->createCharacteristic(
+    rtcServer = BLEDevice::createServer();
+    rtcService = rtcServer->createService(RTC_SERVICE_UUID);
+    rtcServerCharacteristic = rtcService->createCharacteristic(
             RTC_UUID,
             BLECharacteristic::PROPERTY_READ |
             BLECharacteristic::PROPERTY_WRITE
     );
 
-    rtcServerCharacteristic->setValue("Hello World says Neil");
+    rtcServerCharacteristic->setValue("0");
     rtcService->start();
     // BLEAdvertising *pAdvertising = rtcServer->getAdvertising();  // this still is working for backward compatibility
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
@@ -39,7 +43,6 @@ void setup() {
     pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
-    Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
 
 void loop() {
