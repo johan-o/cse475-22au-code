@@ -3,20 +3,18 @@
 #include <HardwareSerial.h>
 
 #include <time.h>
- 
-#define SECONDS_BETWEEN_READINGS 5
+
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+#define SECONDS_BETWEEN_READINGS 1
 #define NUM_READINGS_CACHED 10
 
+// milliseconds delay between tries to read sensor data
 #define DELAY_FAIL 2000
 
-void setup() {
-  // our debugging output
-  Serial.begin(115200);
- 
-  // sensor baud rate is 9600
-  Serial2.begin(9600);
-}
- 
+// Raw Data from PMS5003 Sensor
 struct PMS5003RawData {
   uint16_t framelen;
   uint16_t pm10_standard, pm25_standard, pm100_standard;
@@ -27,13 +25,81 @@ struct PMS5003RawData {
 };
 struct PMS5003RawData rawData;
 
+// Structure to store data with unix time stamp
 struct TimeStampedData {
-  int t;
-  int data;
+  uint32_t time;
+  uint16_t pm10;
+  uint16_t pm25;
+  uint16_t pm100;
 };
 struct TimeStampedData data[NUM_READINGS_CACHED];
 
+// Bluetooth UUIDs
+// Phone needs to set time in the RTC_CHARACTERISTIC to unsigned 32 bit int unix time (since Jan 1 1970)
+#define RTC_SERVICE_UUID          "e0894506-fda6-43d4-b1a4-6813e608b549"
+#define RTC_CHARACTERISTIC_UUID   "28348d85-8d9a-4733-bcb5-f45ea46851b4"
+
+// Bit Layout:
+//  0:3 time
+//  4:5 pm1.0
+//  6:7 pm2.5
+//  8:9 pm10
+#define DATA_SERVICE_UUID         "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define DATA_CHARACTERISTIC_UUID  "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+BLEServer* bleServer;
+BLECharacteristic* bleRTCCharacteristic;
+BLECharacteristic* bleDataCharacteristic;
+
+void setup() {
+  // debugging output
+  Serial.begin(115200);
+ 
+  // sensor baud rate is 9600
+  Serial2.begin(9600);
+
+  // Bluetooth
+  BLEDevice::init("ESP32 PMS5003");
+
+  bleServer = BLEDevice::createServer();
+  
+  BLEService *bleRTCService = bleServer->createService(RTC_SERVICE_UUID);
+  bleRTCCharacteristic = bleRTCService->createCharacteristic(
+                    RTC_CHARACTERISTIC_UUID,
+                    BLECharacteristic::PROPERTY_READ   |
+                    BLECharacteristic::PROPERTY_WRITE  |
+                    BLECharacteristic::PROPERTY_NOTIFY |
+                    BLECharacteristic::PROPERTY_INDICATE
+                  );
+
+  BLEService *bleDataService = bleServer->createService(DATA_SERVICE_UUID);
+  bleDataCharacteristic = bleDataService->createCharacteristic(
+                    DATA_CHARACTERISTIC_UUID,
+                    BLECharacteristic::PROPERTY_READ   |
+                    BLECharacteristic::PROPERTY_WRITE  |
+                    BLECharacteristic::PROPERTY_NOTIFY |
+                    BLECharacteristic::PROPERTY_INDICATE
+                  );
+
+//  bleRTCCharacteristic->addDescriptor(new BLE2902());
+//  bleDataCharacteristic->addDescriptor(new BLE2902());
+
+  // Start the service and advertising
+  bleRTCService->start();
+  bleDataService->start();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(RTC_SERVICE_UUID);
+  pAdvertising->addServiceUUID(DATA_SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
+}
+
 void loop() {
+  if ((uint32_t) time(NULL) < 1668565695) {
+    Serial.print("Clock not set: RTC Value==");
+    Serial.println(bleRTCCharacteristic->getValue().c_str());
+  }
   Serial.println("Beginning data read");
   // bool readSuccessful = false;
 
@@ -44,24 +110,28 @@ void loop() {
 
   Serial.println("Successful data read");
   // printRawData();
-  struct TimeStampedData thisData = calculateAirIndex();
+  struct TimeStampedData thisData = createDataStruct();
   delay(SECONDS_BETWEEN_READINGS * 1000);
 }
 
 // Calculates an air index from sensor readings, currently an average
 // Returns a TimeStampedData struct with current time and averaged index
-struct TimeStampedData calculateAirIndex() {
+struct TimeStampedData createDataStruct() {
   struct TimeStampedData thisData;
   time_t seconds = time(NULL);
-  thisData.t  = seconds;
-  thisData.data = thisData.t;
-  // thisData.data = (rawData.particles_03um + rawData.particles_05um + rawData.particles_10um + 
-  //    rawData.particles_25um + rawData.particles_50um + rawData.particles_100um);
+  thisData.time  = seconds;
+  thisData.pm10 = 10;
+  thisData.pm25 = 25;
+  thisData.pm100 = 100;
   
-  Serial.print("AVERAGED DATA: ");
-  Serial.print((int) thisData.t);
-  Serial.print(" ");
-  Serial.println((int) thisData.data);
+  Serial.print("DATA: t=");
+  Serial.print((int) thisData.time); 
+  Serial.print(" pm1.0=");
+  Serial.print(thisData.pm10);
+  Serial.print(" pm2.5=");
+  Serial.print(thisData.pm25);
+  Serial.print(" pm10.0=");
+  Serial.println(thisData.pm100);
   return thisData;
 }
 
