@@ -51,6 +51,33 @@ BLEServer* bleServer;
 BLECharacteristic* bleRTCCharacteristic;
 BLECharacteristic* bleDataCharacteristic;
 
+// BLE Callback to allow clock to be set immediately upon a write
+class MyRTCCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    Serial.print("Setting Clock: ");
+    std::string bleRTCValue = pCharacteristic->getValue();
+
+    if (bleRTCValue.size() == 4) {
+      uint32_t time = 0;
+      for (int i = 0; i < 4; i++) {
+        Serial.print((unsigned char) bleRTCValue[i], HEX);
+        Serial.print(",");
+        Serial.print((uint32_t) bleRTCValue[i] << (8 * (3 - i)));
+        Serial.print(" ");
+        time += ((uint32_t) bleRTCValue[i]) << (8 * (3 -i));
+      }
+
+      struct timeval tv;
+      tv.tv_sec = time;
+      tv.tv_usec = 0;
+      settimeofday(&tv, NULL);
+
+      Serial.print(time);
+    }
+    Serial.println();
+  }
+};
+
 void setup() {
   // debugging output
   Serial.begin(115200);
@@ -71,6 +98,7 @@ void setup() {
                     BLECharacteristic::PROPERTY_NOTIFY |
                     BLECharacteristic::PROPERTY_INDICATE
                   );
+  bleRTCCharacteristic->setCallbacks(new MyRTCCallbacks());
 
   BLEService *bleDataService = bleServer->createService(DATA_SERVICE_UUID);
   bleDataCharacteristic = bleDataService->createCharacteristic(
@@ -98,27 +126,9 @@ void setup() {
 void loop() {
   // setting time
   if ((uint32_t) time(NULL) < 0x63745b72) {
-    Serial.print("Clock not set: RTC Value==");
-    std::string bleRTCValue = bleRTCCharacteristic->getValue();
-    for (int i = bleRTCValue.size() - 1; i >= 0; i--) {
-      Serial.print((int) bleRTCValue[i], HEX);
-      Serial.print(" ");
-    }
-
-    if (bleRTCValue.size() == 4) {
-      uint32_t time = 0;
-      for (int i = 0; i < 4; i++) {
-        time += (unsigned char) bleRTCValue[3-i] << (8 * i);
-      }
-
-      struct timeval tv;
-      tv.tv_sec = time;
-      tv.tv_usec = 0;
-      settimeofday(&tv, NULL);
-    }
-    Serial.println();
+    Serial.println("Clock not set, awaiting BLE write");
     delay(500);
-  } else {
+  } else { // reading sensor data
     Serial.println("Beginning data read");
     // bool readSuccessful = false;
   
@@ -130,6 +140,7 @@ void loop() {
     Serial.println("Successful data read");
     // printRawData();
     struct TimeStampedData thisData = createDataStruct();
+    transmitDataStruct(thisData);
     
     delay(SECONDS_BETWEEN_READINGS * 1000);
   }
@@ -141,9 +152,9 @@ struct TimeStampedData createDataStruct() {
   struct TimeStampedData thisData;
   time_t seconds = time(NULL);
   thisData.time  = seconds;
-  thisData.pm10 = 10;
-  thisData.pm25 = 25;
-  thisData.pm100 = 100;
+  thisData.pm10 = 0x11;
+  thisData.pm25 = 0x22;
+  thisData.pm100 = 0xaa;
   
   Serial.print("DATA: t=");
   Serial.print(thisData.time); 
@@ -154,6 +165,38 @@ struct TimeStampedData createDataStruct() {
   Serial.print(" pm10.0=");
   Serial.println(thisData.pm100);
   return thisData;
+}
+
+void transmitDataStruct(struct TimeStampedData data) {
+  Serial.println("Setting bleDataCharacteristic");
+  std::string bleData = "0123456789";
+
+  // Time (Bits 0:3)
+  for (int i = 0; i < 4; i++) {
+    bleData[i] = data.time >> (8 * i);
+  }
+
+  // PM1.0
+  bleData[4] = data.pm10;
+  bleData[5] = data.pm10 << 8;
+
+  // PM2.5
+  bleData[6] = data.pm25;
+  bleData[7] = data.pm25 << 8;
+  
+  // PM10.0
+  bleData[8] = data.pm100;
+  bleData[9] = data.pm100 << 8;
+
+  Serial.print("String Value: ");
+  for(int i = 9; i >= 0; i--) {
+    Serial.print((unsigned char) bleData[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  bleDataCharacteristic->setValue(bleData);
+  bleDataCharacteristic->notify();
 }
 
 // Prints all parameters from rawData struct

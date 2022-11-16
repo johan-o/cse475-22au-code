@@ -1,6 +1,6 @@
 /*
- * Allows the ESP32's RTC to be set by the phone upon pairing
  * Prints RTC Unix time to serial
+ * Transmits unix time over bluetooth
 */
 #include <time.h>
 
@@ -11,46 +11,46 @@
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 
-// separate service for rtc setting
-#define RTC_SERVICE_UUID    "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define RTC_UUID            "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+// separate service for data setting
+#define DATA_SERVICE_UUID	"4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define DATA_UUID			"beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-#define DATA_SERVICE_UUID    "b14c20da-e0a3-47b2-803b-abcbc24b060b"
-#define DATA_UUID            "6cd4d98b-297c-43e8-b54d-048ba50d7265"
-
-BLEServer* rtcServer;
-BLEService* rtcService;
-BLECharacteristic *rtcServerCharacteristic;
+BLEServer* dataServer;
+BLEService* dataService;
+BLECharacteristic *pm10Characteristic;
 
 void setup() {
-    Serial.begin(115200);
+	Serial.begin(115200);
 
-    BLEDevice::init("ESP32 BLE RTC");
-    rtcServer = BLEDevice::createServer();
-    rtcService = rtcServer->createService(RTC_SERVICE_UUID);
-    rtcServerCharacteristic = rtcService->createCharacteristic(
-            RTC_UUID,
-            BLECharacteristic::PROPERTY_READ |
-            BLECharacteristic::PROPERTY_WRITE
-    );
+	BLEDevice::init("ESP32 BLE DATA");
+	dataServer = BLEDevice::createServer();
+	dataService = dataServer->createService(DATA_SERVICE_UUID);
+	pm10Characteristic = dataService->createCharacteristic(
+			DATA_UUID,
+			BLECharacteristic::PROPERTY_READ |
+			BLECharacteristic::PROPERTY_WRITE | 
+			BLECharacteristic::PROPERTY_NOTIFY |
+			BLECharacteristic::PROPERTY_INDICATE
+	);
 
-    rtcServerCharacteristic->setValue("0");
-    rtcService->start();
-    // BLEAdvertising *pAdvertising = rtcServer->getAdvertising();  // this still is working for backward compatibility
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(RTC_SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
-    pAdvertising->setMinPreferred(0x12);
-    BLEDevice::startAdvertising();
+	pm10Characteristic->setValue("0");
+
+	dataService->start();
+	// BLEAdvertising *pAdvertising = dataServer->getAdvertising();  // this still is working for backward compatibility
+	BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+	pAdvertising->addServiceUUID(DATA_SERVICE_UUID);
+	pAdvertising->setScanResponse(true);
+	pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+	pAdvertising->setMinPreferred(0x12);
+	BLEDevice::startAdvertising();
 }
 
 void loop() {
-	int seconds = getUnixTime();
-	Serial.println(seconds);
-    delay(500);
-}
+	int seconds = (int) time(NULL);
+	std::string pm10CharString;
 
-int getUnixTime() {
-	return (int) time(NULL);
+
+	Serial.println(seconds);
+	pm10Characteristic->setValue(secondsPointer);
+	delay(500);
 }
