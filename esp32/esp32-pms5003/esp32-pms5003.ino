@@ -96,22 +96,43 @@ void setup() {
 }
 
 void loop() {
-  if ((uint32_t) time(NULL) < 1668565695) {
+  // setting time
+  if ((uint32_t) time(NULL) < 0x63745b72) {
     Serial.print("Clock not set: RTC Value==");
-    Serial.println(bleRTCCharacteristic->getValue().c_str());
+    std::string bleRTCValue = bleRTCCharacteristic->getValue();
+    for (int i = bleRTCValue.size() - 1; i >= 0; i--) {
+      Serial.print((int) bleRTCValue[i], HEX);
+      Serial.print(" ");
+    }
+
+    if (bleRTCValue.size() == 4) {
+      uint32_t time = 0;
+      for (int i = 0; i < 4; i++) {
+        time += (unsigned char) bleRTCValue[3-i] << (8 * i);
+      }
+
+      struct timeval tv;
+      tv.tv_sec = time;
+      tv.tv_usec = 0;
+      settimeofday(&tv, NULL);
+    }
+    Serial.println();
+    delay(500);
+  } else {
+    Serial.println("Beginning data read");
+    // bool readSuccessful = false;
+  
+    // while (!readSuccessful) {
+    //   readSuccessful = readPMSrawData(&Serial2);
+    //   delay(DELAY_FAIL);
+    // }
+  
+    Serial.println("Successful data read");
+    // printRawData();
+    struct TimeStampedData thisData = createDataStruct();
+    
+    delay(SECONDS_BETWEEN_READINGS * 1000);
   }
-  Serial.println("Beginning data read");
-  // bool readSuccessful = false;
-
-  // while (!readSuccessful) {
-  //   readSuccessful = readPMSrawData(&Serial2);
-  //   delay(DELAY_FAIL);
-  // }
-
-  Serial.println("Successful data read");
-  // printRawData();
-  struct TimeStampedData thisData = createDataStruct();
-  delay(SECONDS_BETWEEN_READINGS * 1000);
 }
 
 // Calculates an air index from sensor readings, currently an average
@@ -125,7 +146,7 @@ struct TimeStampedData createDataStruct() {
   thisData.pm100 = 100;
   
   Serial.print("DATA: t=");
-  Serial.print((int) thisData.time); 
+  Serial.print(thisData.time); 
   Serial.print(" pm1.0=");
   Serial.print(thisData.pm10);
   Serial.print(" pm2.5=");
