@@ -1,12 +1,11 @@
-#include <SoftwareSerial.h>
-SoftwareSerial pmsSerial(14, 12);
- 
+#include <HardwareSerial.h>
+
 void setup() {
   // our debugging output
   Serial.begin(115200);
  
   // sensor baud rate is 9600
-  pmsSerial.begin(9600);
+  Serial2.begin(9600);
 }
  
 struct pms5003data {
@@ -21,7 +20,7 @@ struct pms5003data {
 struct pms5003data data;
     
 void loop() {
-  if (readPMSdata(&pmsSerial)) {
+  if (readPMSdata(&Serial2)) {
     // reading data was successful!
     Serial.println();
     Serial.println("---------------------------------------");
