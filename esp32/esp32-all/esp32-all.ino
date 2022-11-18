@@ -1,3 +1,4 @@
+// SET pin
 // RX of sensor to pin 17
 // TX of sensor to pin 16
 #include <HardwareSerial.h>
@@ -8,11 +9,11 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 
-#define SECONDS_BETWEEN_READINGS 1
+#define SECONDS_BETWEEN_READINGS 10
 #define NUM_READINGS_CACHED 10
 
 // milliseconds delay between tries to read sensor data
-#define DELAY_FAIL 2000
+#define DELAY_FAIL 500
 
 // Raw Data from PMS5003 Sensor
 struct PMS5003RawData {
@@ -23,7 +24,7 @@ struct PMS5003RawData {
   uint16_t unused;
   uint16_t checksum;
 };
-struct PMS5003RawData rawData;
+struct PMS5003RawData data;
 
 // Structure to store data with unix time stamp
 struct TimeStampedData {
@@ -32,7 +33,6 @@ struct TimeStampedData {
   uint16_t pm25;
   uint16_t pm100;
 };
-struct TimeStampedData data[NUM_READINGS_CACHED];
 
 // Bluetooth UUIDs
 // Phone needs to set time in the RTC_CHARACTERISTIC to unsigned 32 bit int unix time (since Jan 1 1970)
@@ -62,9 +62,9 @@ class MyRTCCallbacks: public BLECharacteristicCallbacks {
       for (int i = 0; i < 4; i++) {
         Serial.print((unsigned char) bleRTCValue[i], HEX);
         Serial.print(",");
-        Serial.print((uint32_t) bleRTCValue[i] << (8 * (3 - i)));
+        Serial.print((uint32_t) bleRTCValue[i] << (8 * i));
         Serial.print(" ");
-        time += ((uint32_t) bleRTCValue[i]) << (8 * (3 -i));
+        time += ((uint32_t) bleRTCValue[i]) << (8 * i);
       }
 
       struct timeval tv;
@@ -84,6 +84,9 @@ void setup() {
  
   // sensor baud rate is 9600
   Serial2.begin(9600);
+
+  // set reset pin high
+  digitalWrite(13, HIGH);
 
   // Bluetooth
   BLEDevice::init("ESP32 PMS5003");
@@ -109,9 +112,6 @@ void setup() {
                     BLECharacteristic::PROPERTY_INDICATE
                   );
 
-//  bleRTCCharacteristic->addDescriptor(new BLE2902());
-//  bleDataCharacteristic->addDescriptor(new BLE2902());
-
   // Start the service and advertising
   bleRTCService->start();
   bleDataService->start();
@@ -125,17 +125,21 @@ void setup() {
 
 void loop() {
   // setting time
-  if ((uint32_t) time(NULL) < 0x63745b72) {
+  if ((uint32_t) time(NULL) < 86400) {
     Serial.println("Clock not set, awaiting BLE write");
     delay(500);
   } else { // reading sensor data
     Serial.println("Beginning data read");
-    // bool readSuccessful = false;
+    bool readSuccessful = readPMSRawData(&Serial2);
   
-    // while (!readSuccessful) {
-    //   readSuccessful = readPMSrawData(&Serial2);
-    //   delay(DELAY_FAIL);
-    // }
+    while (!readSuccessful) {
+      digitalWrite(13, LOW);
+      delay(100);
+      digitalWrite(13, HIGH);
+      readSuccessful = readPMSRawData(&Serial2);
+      delay(DELAY_FAIL - 100);
+    }
+    printRawData();
   
     Serial.println("Successful data read");
     // printRawData();
@@ -152,12 +156,12 @@ struct TimeStampedData createDataStruct() {
   struct TimeStampedData thisData;
   time_t seconds = time(NULL);
   thisData.time  = seconds;
-  thisData.pm10 = 0x11;
-  thisData.pm25 = 0x22;
-  thisData.pm100 = 0xaa;
+  thisData.pm10 = data.particles_03um + data.particles_05um;
+  thisData.pm25 = data.particles_10um + data.particles_25um;
+  thisData.pm100 = data.particles_50um + data.particles_100um;
   
   Serial.print("DATA: t=");
-  Serial.print(thisData.time); 
+  Serial.print(thisData.time, HEX); 
   Serial.print(" pm1.0=");
   Serial.print(thisData.pm10);
   Serial.print(" pm2.5=");
@@ -176,17 +180,17 @@ void transmitDataStruct(struct TimeStampedData data) {
     bleData[i] = data.time >> (8 * i);
   }
 
-  // PM1.0
+  // PM1.0 and below
   bleData[4] = data.pm10;
-  bleData[5] = data.pm10 << 8;
+  bleData[5] = data.pm10 >> 8;
 
   // PM2.5
   bleData[6] = data.pm25;
-  bleData[7] = data.pm25 << 8;
+  bleData[7] = data.pm25 >> 8;
   
   // PM10.0
   bleData[8] = data.pm100;
-  bleData[9] = data.pm100 << 8;
+  bleData[9] = data.pm100 >> 8;
 
   Serial.print("String Value: ");
   for(int i = 9; i >= 0; i--) {
@@ -199,33 +203,33 @@ void transmitDataStruct(struct TimeStampedData data) {
   bleDataCharacteristic->notify();
 }
 
-// Prints all parameters from rawData struct
+// Prints all parameters from data struct
 void printRawData() {
   Serial.println();
   Serial.println("---------------------------------------");
   Serial.println("Concentration Units (standard)");
-  Serial.print("PM 1.0: "); Serial.print(rawData.pm10_standard);
-  Serial.print("\t\tPM 2.5: "); Serial.print(rawData.pm25_standard);
-  Serial.print("\t\tPM 10: "); Serial.println(rawData.pm100_standard);
+  Serial.print("PM 1.0: "); Serial.print(data.pm10_standard);
+  Serial.print("\t\tPM 2.5: "); Serial.print(data.pm25_standard);
+  Serial.print("\t\tPM 10: "); Serial.println(data.pm100_standard);
   Serial.println("---------------------------------------");
   Serial.println("Concentration Units (environmental)");
-  Serial.print("PM 1.0: "); Serial.print(rawData.pm10_env);
-  Serial.print("\t\tPM 2.5: "); Serial.print(rawData.pm25_env);
-  Serial.print("\t\tPM 10: "); Serial.println(rawData.pm100_env);
+  Serial.print("PM 1.0: "); Serial.print(data.pm10_env);
+  Serial.print("\t\tPM 2.5: "); Serial.print(data.pm25_env);
+  Serial.print("\t\tPM 10: "); Serial.println(data.pm100_env);
   Serial.println("---------------------------------------");
-  Serial.print("Particles > 0.3um / 0.1L air:"); Serial.println(rawData.particles_03um);
-  Serial.print("Particles > 0.5um / 0.1L air:"); Serial.println(rawData.particles_05um);
-  Serial.print("Particles > 1.0um / 0.1L air:"); Serial.println(rawData.particles_10um);
-  Serial.print("Particles > 2.5um / 0.1L air:"); Serial.println(rawData.particles_25um);
-  Serial.print("Particles > 5.0um / 0.1L air:"); Serial.println(rawData.particles_50um);
-  Serial.print("Particles > 10.0 um / 0.1L air:"); Serial.println(rawData.particles_100um);
+  Serial.print("Particles > 0.3um / 0.1L air:"); Serial.println(data.particles_03um);
+  Serial.print("Particles > 0.5um / 0.1L air:"); Serial.println(data.particles_05um);
+  Serial.print("Particles > 1.0um / 0.1L air:"); Serial.println(data.particles_10um);
+  Serial.print("Particles > 2.5um / 0.1L air:"); Serial.println(data.particles_25um);
+  Serial.print("Particles > 5.0um / 0.1L air:"); Serial.println(data.particles_50um);
+  Serial.print("Particles > 10.0 um / 0.1L air:"); Serial.println(data.particles_100um);
   Serial.println("---------------------------------------");
 }
 
 // Reads PMS data from the stream *s
 // Use Serial2 as parameter s
 // Returns true only on good data read (non-zero requirement)
-boolean readPMSrawData(Stream *s) {
+boolean readPMSRawData(Stream *s) {
   Serial.print("Reading raw PMS data: ");
   if (! s->available()) {
     Serial.println("Read Failure--Stream *s not available");
@@ -235,7 +239,8 @@ boolean readPMSrawData(Stream *s) {
   // wait until 0x42 start byte
   if (s->peek() != 0x42) {
     s->read();
-    Serial.println("Read Failure--0x42 start byte not present");
+    Serial.print("Read Failure--0x42 start byte not present. Actual Value == ");
+    Serial.println(s->peek(), HEX);
     return false;
   }
  
@@ -254,7 +259,7 @@ boolean readPMSrawData(Stream *s) {
     sum += buffer[i];
   }
  
-  // The rawData comes in endian'd, this solves it so it works on all platforms
+  // The data comes in endian'd, this solves it so it works on all platforms
   uint16_t buffer_u16[15];
   for (uint8_t i=0; i<15; i++) {
     buffer_u16[i] = buffer[2 + i*2 + 1];
@@ -262,20 +267,20 @@ boolean readPMSrawData(Stream *s) {
   }
  
   // put it into struct
-  memcpy((void *)&rawData, (void *)buffer_u16, 30);
+  memcpy((void *)&data, (void *)buffer_u16, 30);
  
-  if (sum != rawData.checksum) {
+  if (sum != data.checksum) {
     Serial.println("Read failure--Checksum not matched");
     return false;
   }
 
   // wait until sensor is initialized
-  if (rawData.particles_03um |
-      rawData.particles_05um | 
-      rawData.particles_10um | 
-      rawData.particles_25um | 
-      rawData.particles_50um | 
-      rawData.particles_100um ) {
+  if (data.particles_03um |
+      data.particles_05um | 
+      data.particles_10um | 
+      data.particles_25um | 
+      data.particles_50um | 
+      data.particles_100um ) {
         return true;
   }
 
